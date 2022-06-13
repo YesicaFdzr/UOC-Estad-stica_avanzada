@@ -1,0 +1,477 @@
+---
+title: "A1 - Preproceso de datos"
+author: "Yésica Fernández"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Antes de empezar con el preprocesado de datos, vamos a cargar los paquetes necesarios para la realización del ejercicio.
+
+```{r message=FALSE, warning=FALSE}
+# https://cran.r-project.org/web/packages/dplyr/index.html
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr')
+# https://cran.r-project.org/web/packages/stringr/index.html
+if (!require('dplyr')) install.packages('stringr'); library('stringr')
+# https://cran.r-project.org/web/packages/ggplot2/index.html
+if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+# https://cran.r-project.org/web/packages/VIM/index.html
+if (!require('VIM')) install.packages('VIM'); library('VIM')
+# https://cran.r-project.org/web/packages/psych/index.html
+if (!require('psych')) install.packages('psych'); library('psych')
+```
+
+# 1.- Carga del archivo
+En primer lugar, se carga el csv de datos para poder trabajar con el. 
+
+```{r message=FALSE, warning=FALSE}
+CensusIncomedataset <- read.csv("CensusIncomedataset.csv", sep = ";", stringsAsFactors = TRUE)
+```
+
+Una vez cargado el dataset, se analizan los tipos de datos con los que se han cargado las variables.
+
+```{r}
+str(CensusIncomedataset)
+```
+
+Se puede ver que existen 5 variables de tipo "int" y 9 variables de tipo factor, que son texto. Vamos a ver un resumen de los valores que contiene cada variable.
+
+```{r}
+summary(CensusIncomedataset)
+```
+
+En el resumen anterior, se puede observar para las variables numéricas el mínimo, máximo, la media, la mediana, el primer quartil y el tercer cuartil. En cuanto a las variables de tipo factor, se observa cuantas apariciones existen para cada posible valor de la variable. 
+
+
+# 2.- Obtención del dataset para realizar el estudio
+
+En primer lugar, se van a eliminar las variables que no se quieren utilizar en el estudio: **fnlwgt, capital_gain y capital_loss**.
+
+```{r}
+eliminar <- c("fnlwgt", "capital_gain", "capital_loss")
+CensusIncomedatasetMod <- CensusIncomedataset[ , !names(CensusIncomedataset) %in% eliminar]
+```
+
+Ahora, se eliminarán los registros con más de 5 valores NA, pues son registros incompletos que podrían perjudicarnos a la hora de analizar el dataset.
+
+```{r}
+CensusIncomedatasetMod <- CensusIncomedatasetMod[apply(X = is.na(CensusIncomedatasetMod), MARGIN = 1, FUN = sum) <=5,]
+```
+
+Se puede ver resumen del dataset para observar cuantos valores nulos nos quedan por columna:
+
+```{r}
+summary(CensusIncomedatasetMod)
+```
+
+Se observa en el resumen de los datos que ya no hay variables con valores nulos. A continuación, se van a crear nuevas variables en función de las disponibles. Se crea la variable **education_cat** en función de la variable **education_num**. Los valores que tomará esta variable son los siguientes:
+
+* **primaria** si education_num < 7
+* **secundaria** si education_num entre 7 y 9 
+* **universitaria** si education_num entre 10 y 13
+* **postuniversitaria** si education_num mayor que 13
+
+```{r}
+CensusIncomedatasetMod$education_cat <- factor(ifelse(CensusIncomedatasetMod$education_num < 7, "primaria", ifelse(CensusIncomedatasetMod$education_num >= 7 & CensusIncomedatasetMod$education_num <= 9, "secundaria", ifelse(CensusIncomedatasetMod$education_num >= 10 & CensusIncomedatasetMod$education_num <= 13, "universitaria", "postuniversitara"))))
+```
+
+
+Por último, se quiere cambiar el nombre de la variable **sex** por **gender**.
+
+```{r}
+CensusIncomedatasetMod <- CensusIncomedatasetMod %>% rename(gender = sex)
+```
+
+Se imprime un resumen del dataset para ver como se encuentra en el punto actual después de las modificaciones.
+
+```{r}
+summary(CensusIncomedatasetMod)
+```
+
+# 3.- Duplicación de códigos
+
+En este apartado se va a verificar la consistencia de la variable CS_ID, el identificador de cada registro. En primer lugar, se detectan si existen duplicados.
+
+```{r}
+Duplicados <- CensusIncomedatasetMod[duplicated(CensusIncomedatasetMod$CS_ID), ]
+Duplicados
+```
+
+Una vez que se tienen los códigos duplicados, se obtiene el máximo valor de CS_ID para ver con que valor reemplazar estos duplicados.
+
+```{r}
+max(as.integer(substring(CensusIncomedatasetMod$CS_ID, first = 3)))
+```
+
+Por lo tanto, como se tienen 7 duplicados, habrá que reemplazarlos con los siguientes valores: CS32561, CS32562, CS32563, CS32564, CS32565, CS32566 y CS32567. En primer lugar, se busca otro campo para poder diferenciar estos registros y reemplazar el valor sólo en el duplicado.
+
+```{r}
+CensusIncomedatasetMod[CensusIncomedatasetMod$CS_ID %in% (Duplicados$CS_ID), ]
+```
+
+Se observa que con la variable "edad" podemos diferenciar los registros, por lo que se utilizará para filtrar a la hora de realizar la sustitución del identificador.
+
+```{r}
+CensusIncomedatasetMod <- CensusIncomedatasetMod %>% mutate(CS_ID = case_when(
+    CS_ID == "CS624" & age == 47 ~ "CS32561",
+    CS_ID == "CS7163" & age == 39 ~ "CS32562",
+    CS_ID == "CS7453" & age == 31 ~ "CS32563",
+    CS_ID == "CS8017" & age == 33 ~ "CS32564",
+    CS_ID == "CS8087" & age == 30 ~ "CS32565",
+    CS_ID == "CS9197" & age == 47 ~ "CS32566",
+    CS_ID == "CS23654" & age == 34 ~ "CS32567",
+    TRUE ~ as.character(CS_ID)
+  )
+)
+```
+
+Se vuelve a comprobar si existen duplicados para ver si se realizó la sustitución de valores correctamente.
+
+```{r}
+CensusIncomedatasetMod[duplicated(CensusIncomedatasetMod$CS_ID), ]
+```
+
+
+# 4.- Normalización de datos cualitativos
+
+## 4.1.- Eliminación de espacios en blanco
+
+Se ha observado que existen espacios en blanco al inicio de los valores en las variables cualitativas. Por tanto, es necesario eliminar estos espacios en blancos. Observamos alguno de estos casos:
+
+```{r}
+head(grep(pattern = "^\\s", CensusIncomedatasetMod$marital_status, value=T))
+```
+
+Se procede a la eliminación de los espacios en blanco al inicio y al final de todos los valores del dataset.
+
+```{r}
+CensusIncomedatasetMod <- as.data.frame(lapply(CensusIncomedatasetMod,str_trim), stringsAsFactors = TRUE)
+```
+
+Una vez eliminadas, se comprueba con el ejemplo anterior que ya no existen coincidencias con el patrón.
+
+```{r}
+head(grep(pattern = "^\\s", CensusIncomedatasetMod$marital_status, value=T))
+```
+
+## 4.2.- Marital-Status
+
+Se van a cambiar las categorías de la variable marital status actuales por otras que ocupen un carácter. Los valores que se asignarán a la variable marital_status son: **M** por Married, **S** por Single, **X** por Separated, **D** por Divorced, **W** por Widowed. 
+
+```{r}
+CensusIncomedatasetMod <- CensusIncomedatasetMod %>% mutate(marital_status = factor(case_when(
+    marital_status == "Married" ~ "M",
+    marital_status == "Single" ~ "S",
+    marital_status == "Separated"  ~ "X",
+    marital_status == "Divorced"  ~ "D",
+    marital_status == "Widowed"  ~ "W"
+  ))
+)
+```
+
+Ahora se va a representar gráficamente la distribución de valores de la variable.
+
+```{r}
+plot(x=CensusIncomedatasetMod$marital_status, main ="Distribución de varoles según marital_status", xlab = "marital_status", ylab = "Número de registros")
+```
+
+## 4.3.- Género
+
+En primer lugar, se va revisar la consistencia de la variable **gender**. Por lo tanto, vamos a observar que valores contiene esta variable.
+
+```{r}
+summary(CensusIncomedatasetMod$gender)
+```
+
+Se observa que los datos no son consistentes. Para el género femenino la variable puede tomar valores **F**, **Fem**, **female** o **Female** y para el génermo másculino puede tomar los valores **m**, **M**, **male** y **Male**. Por lo tanto, se va a unificar estos valores de tal manera que el género femenino siempre se represente con **f** y el género masculino con **m**.
+
+```{r}
+CensusIncomedatasetMod <- CensusIncomedatasetMod %>% mutate(gender = factor(case_when(
+    gender == "f"  | gender == "F" | gender == "Female" | gender == "female" | gender == "Fem" ~ "f",
+    gender == "m" | gender == "M" | gender == "Male" | gender == "male" ~ "m"
+  ))
+)
+```
+
+Para ver el cambio, se va a representar gráficamente la distribución de valores de la variable.
+
+```{r}
+plot(x=CensusIncomedatasetMod$gender, main ="Distribución de varoles según gender", xlab = "gender", ylab = "Número de registros")
+```
+
+# 5.- Normalización de los datos cuantitativos
+
+## 5.1.- Edad
+
+En este caso, la variable debe ser de tipo entero. Como actualmente es un factor, se convierte primero a tipo integer.
+
+```{r}
+CensusIncomedatasetMod$age <- as.integer(CensusIncomedatasetMod$age)
+```
+
+Se muestra a continuación un extracto del dataset para comprobar que, efectivamente, la variable *age* es de tipo entero.
+
+```{r}
+head(CensusIncomedatasetMod$age)
+```
+
+## 5.2.- Educación
+
+En este caso, al igual que enterior, la variable debe ser de tipo entero. Por lo tanto, se convierte a integer y se muestra un extracto de los datos para comprobar que se ha realizado correctamente.
+
+```{r}
+CensusIncomedatasetMod$education_num <- as.integer(CensusIncomedatasetMod$education_num)
+head(CensusIncomedatasetMod$education_num)
+```
+
+## 5.3.- Horas por semana
+
+Si se observan los posibles valores de la variable **hours_per_wek** se puede ver que va acompañada de la métrica, es decir, de la letra h que indica que está medida en horas. Por lo tanto, en primer lugar, se elimina esta letra y los espacios en blanco que siguen a los números.
+
+```{r}
+CensusIncomedatasetMod$hours_per_week <- str_remove_all(CensusIncomedatasetMod$hours_per_week, "\\sh")
+head(CensusIncomedatasetMod$hours_per_week)
+```
+
+Una vez eliminada la letra h y los espacios en blanco se va a sustituir la coma por el punto, que es el separador de decimales en este caso.
+
+```{r}
+CensusIncomedatasetMod$hours_per_week <- str_replace_all(CensusIncomedatasetMod$hours_per_week, ",", "\\.")
+head(CensusIncomedatasetMod$hours_per_week)
+```
+
+Por último, se va a convertir en tipo numérico, puesto que actualmente es de tipo string (chr).
+
+
+```{r}
+CensusIncomedatasetMod$hours_per_week <- as.numeric(CensusIncomedatasetMod$hours_per_week)
+head(CensusIncomedatasetMod$hours_per_week)
+```
+
+## 5.4.- Income
+
+En primer lugar, se observa el formato de esta variable y alguno de los posibles valores.
+
+```{r}
+head(CensusIncomedatasetMod$income)
+```
+
+Se observa que, al igual que en el caso anterior, esta variable va acompañada siempre del nombre de la unidad de medida. Por lo tanto, se va a extraer esta unidad de medida y comprobar si siempre es la misma o varía.
+
+```{r}
+unique(as.character(str_extract_all(CensusIncomedatasetMod$income, "\\s[aA-zZ](.+)")))
+```
+
+Se puede observar que tenemos datos tanto en euros como en miles de euros. Lo que se va a hacer a continuación, es eliminar la unidad de medida de la variable. Como se necesita saber cuales están en euros y cuales en miles de euros para pasarlos a la misma unidad, se va a colocar temporalmente la unidad de medida en una nueva columna.
+
+```{r}
+CensusIncomedatasetMod$incomeUnidad <- str_trim(as.character(str_extract(CensusIncomedatasetMod$income, "\\s[aA-zZ](.+)")))
+CensusIncomedatasetMod$income <- str_remove_all(CensusIncomedatasetMod$income, "\\s[aA-zZ](.+)")
+```
+
+Ahora se va a reemplazar la , por el . y se convertirá la variable a numérica.
+
+```{r}
+CensusIncomedatasetMod$income <- as.numeric(str_replace_all(CensusIncomedatasetMod$income, ",", "\\."))
+head(CensusIncomedatasetMod$income)
+```
+
+Ahora que la variable ya es numérica, podemos dividirla entre 1000 en aquellos casos que la unidad de medida sea euros.
+
+```{r}
+CensusIncomedatasetMod$income <- ifelse(CensusIncomedatasetMod$incomeUnidad == "euros", CensusIncomedatasetMod$income/1000, CensusIncomedatasetMod$income)
+```
+
+Por último, podemos eliminar la columna creada anteriormente con la unidad de medida, puesto que no aporta valor. Se muestra un resumen del dataset.
+
+```{r}
+CensusIncomedatasetMod <- CensusIncomedatasetMod[, !names(CensusIncomedatasetMod) %in% ("incomeUnidad")]
+summary(CensusIncomedatasetMod)
+```
+
+# 6.- Valores atípicos
+
+Se revisa si existen valores atípicos para las variables **age**, **education_num**, **hours_per_week** y **income**. Para ello, se realizan unos gráficos de cajas para analizar de manera visual los outliers.
+
+```{r}
+par(mfrow = c(1, 4))
+g_age <- boxplot(x=CensusIncomedatasetMod$age, main = "Age")
+g_education_num <- boxplot(x=CensusIncomedatasetMod$education_num, main ="education_num")
+g_hours_per_week <- boxplot(x=CensusIncomedatasetMod$hours_per_week, main = "hours_per_week")
+g_income <- boxplot(x=CensusIncomedatasetMod$income, main = "income")
+```
+
+En los gráficos de cajas se observa que la variable **age** tiene valores atípicos elevados. En cuanto a la variable **education_num** no se encuentran valores anómalos para ella. Por otra parte, la variable **income** también tiene valores atípicos, elevados y demasiado bajos. Por último, en cuanto a la variable **hours_per_week** se observa que considera demasiados valores como outliers según el gráfico de cajas. En este último caso, como se indica en los datos del enunciado, se considerarán valores atípicos aquellos que sean superiores a 80 (80 horas por semana).
+
+Una vez identificados los valores atípicos, se sustituyen por NA, para tratarlos en el próximo apartado.
+
+```{r}
+CensusIncomedatasetMod$age <- ifelse(CensusIncomedatasetMod$age %in% g_age$out, NA, CensusIncomedatasetMod$age)
+CensusIncomedatasetMod$income <- ifelse(CensusIncomedatasetMod$income %in% g_income$out, NA, CensusIncomedatasetMod$income)
+CensusIncomedatasetMod$hours_per_week <- ifelse(CensusIncomedatasetMod$hours_per_week > 80, NA, CensusIncomedatasetMod$hours_per_week)
+summary(CensusIncomedatasetMod)
+```
+
+# 7.- Imputación de valores
+
+Existen valores perdidos en las variables **age**, **hours_per_week** e **income**. En primer lugar, se imputarán los valores de **age** por media aritmética. Es decir, los valores perdidos se sustituirán por la media de los valores válidos. Para ello, primero sacaremos los identificadores de estos resgistros con valores perdidos en la edad, para ver después de la imputación el resultado.
+
+```{r}
+Age_na <- filter(CensusIncomedatasetMod, is.na(age))
+head(Age_na)
+```
+
+
+```{r}
+CensusIncomedatasetMod$age <- ifelse(is.na(CensusIncomedatasetMod$age), mean(na.omit(CensusIncomedatasetMod$age)), CensusIncomedatasetMod$age )
+summary(CensusIncomedatasetMod)
+```
+
+Vemos en el resumen que ya no existen valores perdidos para la variable. Vamos a observar alguno de los valores asignados:
+
+```{r}
+head(filter(CensusIncomedatasetMod,CS_ID %in% Age_na$CS_ID ))
+```
+
+Se observa que el valor que toma la variable es el mismo, siempre la media. Ahora vamos a imputar la variable **income**. En este caso, se usará la media aritmética de los registros del mismo sexo. se van a extraer en primer lugar estos registros para realizar después la comparación con los datos imputados.
+
+```{r}
+Income_na <- filter(CensusIncomedatasetMod, is.na(income))
+```
+
+
+```{r}
+CensusIncomedatasetMod$income <- ifelse(is.na(CensusIncomedatasetMod$income) & CensusIncomedatasetMod$gender == "m", mean(na.omit(filter(CensusIncomedatasetMod, gender == "m")$income)),
+                                 ifelse(is.na(CensusIncomedatasetMod$income) & CensusIncomedatasetMod$gender == "f", mean(na.omit(filter(CensusIncomedatasetMod, gender == "f")$income)), CensusIncomedatasetMod$income))
+summary(CensusIncomedatasetMod)
+```
+
+Observamos que la variable **income** ya no tiene valores perdidos. Veamos que valores muestra ahora en esos casos.
+
+```{r}
+filter(CensusIncomedatasetMod, CS_ID %in% Income_na$CS_ID)
+```
+
+
+Vemos como cambia el valor imputado dependiendo del valor de la variable **gender**. Por último, se van a imputar los valores perdidos de la variable **hours_per_week** mediante vecinos más cercanos, usando la distancia de Gower, considerando en el címputo de los vecinos cercanos las variables cuantitativas: **age**, **income**, **education_num**. Para realizar la imputación también se tendrá en cuenta el género. Se extraen, como siempre, los registros con valores nulos en la variable para su posterior comparación.
+
+```{r}
+Hours_per_week_na <- filter(CensusIncomedatasetMod, is.na(hours_per_week))
+head(Hours_per_week_na)
+```
+
+```{r}
+mujeres <- kNN(filter(CensusIncomedatasetMod, gender == "f"), variable = "hours_per_week", metric = Gower, k=11, dist_var = c("age", "income", "education_num"))
+hombres <- kNN(filter(CensusIncomedatasetMod, gender == "m"), variable = "hours_per_week", metric = Gower, k=11, dist_var = c("age", "income", "education_num"))
+CensusIncomedatasetMod <- bind_rows(mujeres, hombres)
+summary(CensusIncomedatasetMod)
+```
+
+
+Vamos a observar los valores que toma la variable.
+
+```{r}
+head(filter(CensusIncomedatasetMod, CS_ID %in% Hours_per_week_na$CS_ID))
+```
+
+# 8.- Estudio descriptivo
+
+## 8.1.- Funciones de media robusta
+
+Se va a implementar una función que, dado un vector con datos numéricos, calcule la media recortada y otra que calcule la media Winsor.
+
+```{r}
+media.recortada <- function( x, perc=0.05){
+   y <- sort(x)
+   longitud <- length(x)
+   quitar <- round(longitud*perc)
+   z = head(y, -quitar)
+   x = tail(z, -quitar)
+   media = mean(x)
+   return(media)
+}
+```
+
+Para comprobar si funciona se va a realizar una comparación entre la función implementada y la función de R mean con el parámetro trim con la variable **age** del dataset.
+
+```{r}
+Funcion_r <- mean(CensusIncomedatasetMod$age, trim = 0.05)
+Funcion_implementada <- media.recortada(CensusIncomedatasetMod$age)
+Funcion_r 
+Funcion_implementada
+```
+
+Se puede observar que la media coincide y por lo tanto la función se ha implementado de manera correcta. Se pasa a implementar la media Winsor.
+
+```{r}
+media.winsor <- function( x, perc=0.05){
+  y <- sort(x)
+  longitud <- length(x)
+  quitar <- round(longitud*perc)
+  z = head(y, -quitar)
+  x = tail(z, -quitar)
+  maximo = max(x)
+  minimo = min(x)
+  if (quitar > 0){
+    i <- 1
+    while(i<=quitar){
+      x = c(x, maximo)
+      x = c(x, minimo)
+      i <- i+1;
+    }
+  }
+  media = mean(x)
+  return(media)
+}
+```
+
+Vamos a comprobar que funciona comparando el resultado con la función de R.
+
+```{r}
+Funcion_implementada <- media.winsor(CensusIncomedatasetMod$age)
+Funcion_implementada
+Funcion_r <- winsor.mean(CensusIncomedatasetMod$age, trim=0.05)
+Funcion_r
+```
+
+Se observa el mismo resultado con nuestra implementación que con la función de R, por lo que damos la función por válida.
+
+## 8.2.- Estudio descriptivo de las variables cuantitativas
+
+En primer lugar, se va a representar la distribución de estas variables de manera gráfica.
+
+```{r}
+par(mfrow = c(2,2))
+hist(x=CensusIncomedatasetMod$age, main = "Age")
+hist(x=CensusIncomedatasetMod$education_num, main ="education_num")
+hist(x=CensusIncomedatasetMod$hours_per_week, main = "hours_per_week")
+hist(x=CensusIncomedatasetMod$income, main = "income")
+```
+
+Ahora se va a montar una tabla con medidades de tendencia central y dispersión, robustas y no robustas.
+
+```{r}
+Variable <- c("Age", "Income", "Education_num", "hours_per_week")
+Media_aritmetica <- c(mean(CensusIncomedatasetMod$age), mean(CensusIncomedatasetMod$income), mean(CensusIncomedatasetMod$education_num), mean(CensusIncomedatasetMod$hours_per_week))
+Mediana <- c(median(CensusIncomedatasetMod$age), median(CensusIncomedatasetMod$income), median(CensusIncomedatasetMod$education_num), median(CensusIncomedatasetMod$hours_per_week))
+Media_recortada <- c(media.recortada(CensusIncomedatasetMod$age), media.recortada(CensusIncomedatasetMod$income), media.recortada(CensusIncomedatasetMod$education_num),      media.recortada(CensusIncomedatasetMod$hours_per_week))
+Media_winsor <- c(media.winsor(CensusIncomedatasetMod$age), media.winsor(CensusIncomedatasetMod$income), media.winsor(CensusIncomedatasetMod$education_num), media.winsor(CensusIncomedatasetMod$hours_per_week))
+Desviacion_estandar <- c(sd(CensusIncomedatasetMod$age), sd(CensusIncomedatasetMod$income), sd(CensusIncomedatasetMod$education_num), sd(CensusIncomedatasetMod$hours_per_week))
+Rango_intercuartilico <- c(IQR(CensusIncomedatasetMod$age), IQR(CensusIncomedatasetMod$income), IQR(CensusIncomedatasetMod$education_num), IQR(CensusIncomedatasetMod$hours_per_week))
+Desviacion_absoluta_respecto_a_mediana <- c(mad(CensusIncomedatasetMod$age), mad(CensusIncomedatasetMod$income), mad(CensusIncomedatasetMod$education_num), mad(CensusIncomedatasetMod$hours_per_week))
+tabla <- data.frame(cbind(Variable, Media_aritmetica, Mediana, Media_recortada, Media_winsor, Desviacion_estandar, Rango_intercuartilico, Desviacion_absoluta_respecto_a_mediana))
+knitr::kable(tabla)
+```
+
+
+# 9.- Archivo final
+
+Una vez terminado el preprocesado de datos, se exporta el fichero final.
+
+```{r}
+write.csv(CensusIncomedatasetMod,"./CesusIncome_clean.csv")
+```
+

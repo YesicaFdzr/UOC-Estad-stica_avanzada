@@ -1,0 +1,405 @@
+---
+title: "A2 - Análisis estadístico I"
+author: "Yésica Fernández"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Antes de empezar con el preprocesado de datos, vamos a cargar los paquetes necesarios para la realización del ejercicio.
+
+```{r message=FALSE, warning=FALSE}
+# https://cran.r-project.org/web/packages/dplyr/index.html
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr')
+# https://cran.r-project.org/web/packages/ggplot2/index.html
+if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+# https://cran.r-project.org/web/packages/graphics/index.html
+if (!require('graphics')) install.packages('graphics'); library('graphics')
+```
+
+
+#1.- Lectura del fichero y preparación de los datos
+
+En primer lugar, se carga el csv de datos para poder trabajar con el. 
+
+```{r message=FALSE, warning=FALSE}
+Censo <- read.csv("CensusIncome_clean.csv", sep = ",", stringsAsFactors = TRUE)
+```
+
+Se verifica que los datos se han cargado correctamente.
+
+```{r}
+summary(Censo)
+```
+
+# 2.- Edad
+
+Es interesante conocer el valor medio de la edad del censo, por lo que se va a calcular el intervalo de confianza de la media edad. 
+
+## 2.1- Distribución de edades
+
+Se va a visualizar gráficamente la distribución de la edad. 
+
+```{r}
+barplot(table(Censo$age), main= "Distribución Edad")
+```
+
+Se observa en el gráfico que la mayoría se encuentra entre los 20 y los 40 años.
+
+## 2.2.- Normalidad
+
+Para comprobar si la edad sigue una distribución normal, en primer lugar se va a calcular la media y la desviación estándar y se va a realizar la representación en una curva.
+
+```{r}
+media <- mean(Censo$age)
+desviacion <- sd(Censo$age)
+curve(dnorm(x, media, desviacion), xlim = c(0, 120))
+```
+
+
+Podemos considerar que no sigue una distribución normal. En una distribución normal, visualmente tendría forma de campana y sería simétrica. En este caso no cumple la simetría. 
+
+## 2.3.- Intervalo de confianza 
+
+Para calcular el intervalo de confianza de la media de la variable edad se va a definir una función IC que reciba la variable y la confianza y que devuelva un vector con los valores del intervalo de confianza.
+
+A pesar de no seguir una distribución normal, como la población tiene una medida superior a 30, podemos seguir el mismo método para el cálculo de los intervalos de confianza. 
+
+```{r}
+IC <- function(x, NC){
+  alpha <- 1 - NC
+  n <- length(x)
+  desviacion <- sd(x)
+  media <- mean(x)
+  cuartil <- qt(alpha/2, df=n-1,  lower.tail=FALSE)
+  margen_error = abs((cuartil*desviacion) / sqrt(n))
+  lim_inf <- media - margen_error
+  lim_sup <- media + margen_error
+  a <- c(lim_inf, lim_sup)
+  return(a)
+}
+```
+
+
+## 2.4.- Cálculos
+
+Una vez que se ha definido la función, se va a calcular el intervalo de confianza al 90% y al 95%. 
+
+```{r}
+Resultado_1 <- IC(Censo$age, 0.95)
+Resultado_1
+```
+
+```{r}
+Resultado_2 <- IC(Censo$age, 0.90)
+Resultado_2
+```
+
+Se oberva que con un intervalo de confianza superior el porcentaje de rechazo, alpha, es inferior (pasa de 0.1 a 0.05), lo que implica que la región de aceptación es mayor.
+
+## 2.5.- Interpretación
+
+En la muestra, la media de edad abarca desde el 38.42 hasta 38.67 con una confianza del 95%. Si cambiamos la confianza al 90%, la media de edad de la muestra barca desde el 38.45 al 38.64.
+
+# 3.- Salario
+
+Se va a investigar ahora el salario de la población. En particular, la pregunta es que si en media, el salario de las personas Self-Employed es inferior al resto de modalidades.
+
+## 3.1. Pregunta de investigación
+
+¿La media del salario de las personas Self-Employed es inferior al resto de personas de la población?
+
+## 3.2.- Hipótesis
+
+$$
+\left\{
+  \begin{array}{ll}
+    H_{0}: &  \mu_{0}=\mu_{1}\\
+    H_{1}: & \mu_{0} <\mu_{1}
+  \end{array}
+\right.
+$$
+
+Siendo $\mu_{0}$ la media del salario en personas Self-Employed y $\mu_{1}$ en el resto de la población. Proponemos como $H_0$ que las medias del salario entre personas Self-Employed y el resto de la población es la misma, y como hipótesis alternativa, que es inferior.
+
+## 3.3.- Test a aplicar
+
+En primer lugar, para saber que test podemos utilizar, vamos a observar si la variable sigue una distribución normal.
+
+```{r}
+media <- mean(Censo$income)
+desviacion <- sd(Censo$income)
+curve(dnorm(x, media, desviacion), xlim = c(20, 80))
+```
+
+Podemos asumir normalidad en el salario y por lo tanto se puede calcular la probabilidad de que varios valores ocurran en un cierto intervalo dada la confianza, por lo que se puede afirmar que se trata de un test paramétrico.
+
+Por otra parte, es un contraste de dos muestras independientes. 
+
+## 3.4.- Cálculo
+
+Para el cálculo del test se va a implementar una función propia.
+
+```{r}
+my_test_3 <- function(x, y, NC){
+  media_x <- mean(x)
+  media_y <- mean(y)
+  var_x <- var(x)
+  var_y <- var(y)
+  alpha <- 1 - NC
+  n_x <- length(x)
+  n_y <- length(y)
+  #Estadístico de contraste
+  zobs <- (media_x - media_y) / sqrt((var_x/n_x) + (var_y/n_y))
+  #Región de aceptación
+  zcrit.L <- qnorm(1-alpha, lower.tail=TRUE)
+  #Cálculo del p valor
+  pvalue <- pnorm(zobs, lower.tail=TRUE,)
+  return(data.frame(L=zcrit.L, U="INF", zobs, pvalue))
+}
+```
+
+Una vez que tenemos definida la función, vamos a calcular la media del salario de la población que no es Self-Employed.
+
+```{r}
+mu <- mean(filter(Censo, workclass != "Self-Employed" )$income)
+mu
+```
+
+Una vez tenemos el valor de la media, vamos a calcular el contraste para un nivel de confianza del 95% y del 90%.
+
+```{r}
+Resultado_3 <- my_test_3(filter(Censo, workclass == "Self-Employed" )$income, filter(Censo, workclass != "Self-Employed" )$income, 0.95)
+Resultado_4 <- my_test_3(filter(Censo, workclass == "Self-Employed" )$income, filter(Censo, workclass != "Self-Employed" )$income, 0.90)
+Resultado_3$NivelConfianza <- "95%"
+Resultado_4$NivelConfianza <- "90%"
+Resultados <- rbind(Resultado_4, Resultado_3)
+knitr::kable(Resultados)
+```
+
+
+
+## 3.5.- Conclusión
+
+Con un nivel de confianza del 90%, dado que p-valor > $\alpha$, aceptamos la hipótesis nula y se concluye que la media de salario de la población Self-Employed es igual a la media de salario del resto de la población. 
+
+Con un nivel de confianza del 95% obtenemos el mismo resultado que con el nivel de confianza inferior.
+
+# 4.- Proporción de Self-employed
+
+La pregunta es si el porcentaje de Self-Employed en la población es superior al 10%.
+
+## 4.1.- Pregunta
+
+¿La proporción de Self-Employed de la población es superior al 10%?
+
+## 4.2.- Hipótesis
+
+$$
+\left\{
+  \begin{array}{ll}
+    H_{0}: &  p=0.10\\
+    H_{1}: & p>0.10
+  \end{array}
+\right.
+$$
+
+Siendo p la proporción de la población Self-Employed,  se propone como $H_0$ que la proporción es igual al 10%, y como hipótesis alternativa, que es superior.
+
+## 4.3. - Análisis visual
+
+Se va a representar de forma gráfica la proporción de Self-Employed de la muestra. Para ello, se va a utilizar un gráfico de sectores.
+
+```{r}
+pie(table(Censo$workclass), main = "WorkClass")
+```
+
+## 4.4.- Contraste
+
+Dada la formulación de hipótesis alternativa, se trata de un test unilateral por la derecha.  
+
+
+## 4.5.- Cálculo
+
+Para realizar el cálculo se va a implementar una función propia.
+
+```{r}
+my_test_4 <- function(x, y, NC, mu){
+  n <- length(x)
+  Self <- length(y)
+  proporcion <- Self/n
+  q <- 1 - mu
+  #Calculo del nivel de significación
+  alpha <- 1- NC
+  #Región de aceptación
+  tcrit.L <- qnorm(alpha, lower.tail = FALSE) 
+  #Estadístico de contraste
+  tobs <- (proporcion - mu) / sqrt((mu*(1-mu))/n)
+  #Cálculo del p valor
+  pvalue <- pnorm(tobs, lower.tail=FALSE)
+  return(data.frame(L=tcrit.L, U="INF", tobs, pvalue))
+}
+```
+
+Una vez tenemos la función, calculamos para un nivel de confianza del 95%.
+
+```{r}
+Resultado_5 <- my_test_4(Censo$workclass, filter(Censo, workclass == "Self-Employed" )$workclass, 0.95, 0.10)
+Resultado_5$NivelConfianza <- "95%"
+knitr::kable(Resultado_5)
+```
+
+## 4.6.- Conclusión
+
+Dado que el valor observado se encuentra dentro de la región de aceptación, no se puede rechazar la hipótesis nula. Por otra parte, dado que el p-value < $\alpha$  se puede rechazar la hipótesis nula. Por lo tanto, se concluye que la proporción de la población Self-Employed es superior al 10% de la población con un nivel de confianza del 95%.
+
+# 5.- Proporción de Self-Employed en mujeres y hombres
+
+Nos preguntamos si la proporción de Self-Employed es menor entre las mujeres que entre los hombres en la
+población.
+
+## 5.1.- Pregunta de investigación
+
+¿La proporción de Self-Employed en la población es menor entre las mujeres que entre los hombres?
+
+## 5.2.- Análisis visual
+
+Vamos a representar la proporción de Self-Employed en la muestra de hombres y en la muestra de mujeres.
+
+```{r}
+par(mfrow = c(1,2))
+pie(table(filter(Censo, gender == "f")$workclass), main = "WorkClass en mujeres")
+pie(table(filter(Censo, gender == "m")$workclass), main = "WorkClass en hombres")
+```
+
+A simple vista ya se observa que la proporción de Self-employed en mujeres es menor que en los hombres.
+
+## 5.3.- Hipótesis
+
+$$
+\left\{
+  \begin{array}{ll}
+    H_{0}: &  \mu_{0}=\mu_{1}\\
+    H_{1}: & \mu_{0} <\mu_{1}
+  \end{array}
+\right.
+$$
+
+Siendo $\mu_{0}$ la proporción de Self-Employed en mujeres y $\mu_{1}$ la proporción en hombres, se propone como $H_0$ que las proporciones entre los dos géneros son la misma, y como hipótesis alternativa, que es la propoción es inferior en mujeres.
+
+
+## 5.4. Test
+
+Se trata de un contraste de dos muestra. Y, además, es un contraste unilateral por la izquierda, puesto que  hay que observar una evidencia suficiente de que sea notablemente inferior a la media de la población que no es Self-Employed. 
+
+## 5.5.- Cálculo
+
+Definimos una función para el cálculo del contraste.
+
+```{r}
+my_test_5 <- function(x, y, NC, total){
+  alpha <- 1 - NC
+  n_x <- length(x)
+  n_y <- length(y)
+  p_x <- n_x / total
+  p_y <- n_y / total
+  p <- (n_x*p_x + n_y*p_y) / (n_x+n_y)
+  zobs <- (p_x -p_y) / (sqrt(p*(1-p)*(1/n_x + 1/n_y)))
+  zcrit.L <- qnorm (alpha, lower.tail = TRUE)
+  pvalue <- pnorm (zobs, lower.tail = TRUE)
+  return(data.frame(L=zcrit.L, U="-INF", zobs, pvalue))
+}
+```
+
+
+Una vez definida la función, realizamos el cálculo con un nivel de confianza del 97%.
+
+```{r}
+Resultado_6 <- my_test_5(filter(Censo, workclass == "Self-Employed" & gender == "f")$workclass, filter(Censo, workclass == "Self-Employed" & gender == "m")$workclass, 0.97, length(Censo$workclass))
+Resultado_6$NivelConfianza <- "97%"
+knitr::kable(Resultado_6)
+```
+
+## 5.6.- Conclusión
+
+Con un nivel de confianza del 97%, como el valor observado no se encuentra en el intervalo de confianza podemos rechazar la hipótesis nula. Por otra parte, como p-value < $\alpha$ también podemos aceptar la rechazar nula. Por lo tanto, se confirma que la hipótesis alternativa, la proporción de Self-Employed en mujeres es menor que en hombres.
+
+# 6.- Dependencia Género - Self-Employed
+
+Otra forma de abordar si existen diferencias en la proporción de Self-Employed según el género es realizando
+un test de independencia de dos variables cualitativas. Concretamente, nos preguntamos si el género y
+ser Self-Employed están relacionadas o se pueden considerar variables independientes. Las variables serían
+independientes si el género no influye en la proporción de Self-Employed, es decir, si no hay diferencias en las
+proporciones de Self-Employed según el género.
+
+En esta sección se pide aplicar el test de independencia Chi cuadrado para evaluar si las variables género y
+Self-Employed son independientes.
+
+## 6.1.- Pregunta de investigación
+
+¿Las variables género y Self-employed están relacionadas o son independientes?
+
+## 6.2.- Hipótesis
+
+$$
+\left\{
+  \begin{array}{ll}
+    H_{0}: \mbox{género y self-employed son variables independientes} \\
+    H_{1}: \mbox{existe una relación entre género y self-employed}
+  \end{array}
+\right.
+$$
+
+## 6.3.- Test
+
+El test chi-cuadrado se utiliza para analizar variables y determinar la existencia o no de independencia entre ellas. como se puede observar, las dos variables son de tipo categórico, y la variable género de tipo binario puesto que sólo puede tomar valores en dos categorías. Se construye la tabla de contingencia donde se anota el número de casos observados para cada combinación de las dos variables. 
+
+```{r}
+Censo_Self <- data.frame(filter(Censo, workclass == "Self-Employed"), stringsAsFactors = TRUE)
+Tabla_contingencia <- table(Censo_Self$workclass, Censo_Self$gender)[4,]
+knitr::kable(Tabla_contingencia)
+```
+
+## 6.4.- Cálculos
+
+Calculamos el contraste con un nivel de confianza del 97%.
+
+```{r}
+Chi_cuadrado <- chisq.test(Tabla_contingencia, correct = TRUE)
+Chi_cuadrado
+```
+
+## 6.5.- Conclusión
+
+Se obtiene un p-value de 2.2e-16, por lo que no podemos rechazar la hipótesis nula y se concluye que no se observa evidencia suficiente para confirmar que las variables son dependientes.
+
+
+# 7.- Resumen y conclusiones
+
+Vamos a presentar una tabla con las conclusiones y resultados de cada sección
+
+
+```{r}
+N <- c(2, 2, 3, 3, 4, 5, 6)
+Pregunta <- c("Intervalo de confianza de la media de edad al 90%", 
+              "Intervalo de confianza de la media de edad al 95%", 
+              "Media del salario de Self-employed inferior al resto en 90%", "Media del salario de Self-employed inferior al resto en 95%", 
+              "Proporción de self-employed superior al 10% al 95%", 
+              "Proporción de self-employed menor en mujeres que en hombres al 97%",
+              "Variables género y self-employed independientes al 97%")
+Resultados <- c(toString(Resultado_1), 
+                toString(Resultado_2), 
+                toString(Resultado_4), 
+                toString(Resultado_3), 
+                toString(Resultado_5), 
+                toString(Resultado_6), toString(Chi_cuadrado))
+Conclusion <- c("El intervalo al 90% es 38.42642 38.67333", "El intervalo al 95% es 38.40276 38.69698", "Se acepta la hipótesis nula, la media del salario self-employed igual al resto", "Se acepta la hipótesis nula, la media del salario self-employed igual al resto", "Se rechaza la hipótesis nula, proporción de self-employed mayor al 10%", "Se rechaza la hipótesis nula, proporción de self-employed menor en mujeres que en hombres", "Las variables no son dependientes con un nivel de confianza del 97%")
+tabla <- data.frame(N, Pregunta, Resultados, Conclusion)
+knitr::kable(tabla)
+```

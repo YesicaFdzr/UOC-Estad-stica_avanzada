@@ -1,0 +1,627 @@
+---
+title: "A3 - Modelización predictiva"
+author: "Yésica Fernández Ramos"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+Antes de empezar con la práctica, vamos a cargar los paquetes necesarios para la realización del ejercicio.
+
+```{r message=FALSE, warning=FALSE}
+# https://cran.r-project.org/web/packages/dplyr/index.html
+if (!require('dplyr')) install.packages('dplyr'); library('dplyr')
+# https://cran.r-project.org/web/packages/ggplot2/index.html
+if (!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+# https://cran.r-project.org/web/packages/graphics/index.html
+if (!require('graphics')) install.packages('graphics'); library('graphics')
+# https://cran.r-project.org/web/packages/ResourceSelection/index.html
+if (!require('ResourceSelection')) install.packages('ResourceSelection'); library('ResourceSelection')
+# https://cran.r-project.org/web/packages/ROCR/index.html
+if (!require('ROCR')) install.packages('ROCR'); library('ROCR')
+```
+
+
+# Introducción
+
+En esta actividad se usará el fichero de datos (dat_Air_Stations) que contiene información de diferentes parámetros sobre la calidad del aire de una determinada ciudad del Norte de España en el año 2018. Los datos nos muestran concentraciones por hora de varios contaminantes atmosféricos (gases y partículas) como SO2, NO2, O3 y PM10, entre otros, monitoreados en cinco estaciones. Por otro lado en dos de las cinco estaciones, se han recogido medidas de variables meteorológicas. El periodo que abarca este estudio está comprendido entre el 1 de Enero 2018 al 31 de Diciembre de 2018. Estos datos han sido medidos en tiempo real.
+
+La contaminación del aire representa un importante riesgo medioambiental y para la salud, tanto en los países desarrollados como en los países en desarrollo, por lo que su estudio es muy necesario. Las variables del fichero de datos son:
+
+* Estación: Estación móvil.
+* Nombre: Nombre de la estación móvil.
+* latitud: Latitud del lugar de medición.
+* longitud: Longitud del lugar de medición.
+* Fecha: Fecha de medición.
+* Periodo: Mediciones cada hora. Periodo de 1 a 24 horas (diarias).
+* SO2: Concentración de SO2 (dióxido de azufre) en μg/m3.
+* NO: Concentración de NO (óxido nítrico) en μg/m3.
+* NO2: Concentración de (dióxido de nitrógeno) en μg/m3.
+* CO: Concentración de CO en μg/m3.
+* O3: Concentración de Ozono en μg/m3.
+* PM10: Partículas en suspensión <10 en μg/m3.
+* PM25: Partículas en suspensión PM 2,5 en μg/m3.
+* BEN: Concentración de benceno en μg/m3.
+* TOL: Tolueno en μg/m3.
+* MXIL: MiXileno en μg/m3.
+* dd: Dirección del viento en grados.
+* vv: Velocidad del viento en m/sg.
+* TMP: Temperatura en grados centígrados.
+* HR: Humedad relativa en % de hr.
+* PRB: Presión Atmosférica en mb.
+* RS: Radiación Solar en W/m2.
+* LL: Precipitación en l/m2.
+
+
+# Carga de los datos
+
+En primer lugar, se realiza la carga del fichero y se observa que se ha realizado correctamente.
+
+```{r message=FALSE, warning=FALSE}
+AirStations <- read.csv("dat_Air_Stations.csv", sep = ",")
+AirStations$Fecha <- as.Date(AirStations$Fecha, format = "%d/%m/%Y")
+summary(AirStations)
+```
+
+# 1.- Regresión Lineal
+
+*La exposición a la materia particulada (PM10), al ozono (O3), al dióxido de nitrógeno (NO2) y el dióxido de azufre (SO2), plantean graves riesgos para la salud. Las directrices de la OMS sobre la calidad del aire establecen los límites sobre estos principales contaminantes atmosféricos.
+
+PM10: Límite de 45 microgramos de partículas por cada metro cúbico μg/m3. SO2: Límite de 40 μg/m3.
+NO2: Límite de 25 μg/m3. O3: Límite de 60 μg/m3.
+
+El índice de calidad del aire se calcula de forma individual teniendo en cuenta cada uno de dichos contaminantes. Todos estos valores están referidos a la media diaria.
+
+Con referencia a valores máximos diarios se tomarán los valores de 100 μg/m3 para O3 y de 120 μg/m3 para NO2. Tanto para PM10 y SO2, se tomarán como referencia únicamente los valores medios diarios para comparar.*
+
+## 1.1- Estudio comparativo entre estaciones
+
+### a) Estudio de los valores medios y máximos diarios de cada contaminante
+
+*Para cada una de las estaciones de monitoreo, se calcularán los valores máximos y medios diarios de cada contaminante. Posteriormente se hará una comparativa entre las cinco estaciones en base a dichos valores. Interpretad teniendo en cuenta los límites mencionados anteriormente.*
+
+En primer lugar, vamos a calcular los valores medios diarios de cada contaminante.
+
+```{r}
+AirStationsMediasPM10 <- aggregate(PM10~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasO3 <- aggregate(O3~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasNO2 <- aggregate(NO2~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasSO2 <- aggregate(SO2~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationMedias <- merge( x = merge( x = merge(x = AirStationsMediasPM10, y = AirStationsMediasO3), y = AirStationsMediasNO2), y =AirStationsMediasSO2)
+
+head(AirStationMedias)
+```
+
+Vamos a comparar las medias diarias en base a los límites.
+
+```{r}
+filter(AirStationMedias, PM10 > 45) %>% count(Nombre)
+```
+
+Se observa que la estación de Montevil los límites del PM10 10 días.
+
+
+```{r}
+filter(AirStationMedias, SO2 > 40) %>% count(Nombre)
+```
+
+No sé ven evidencias de que se superen los límites de SO2 en las estaciones.
+
+
+```{r}
+filter(AirStationMedias, NO2 > 25) %>% count(Nombre)
+```
+
+Se observa que la estación Avenida Constitución  supera los límites más de la mitad del año. La de Estación de Montevil también los supera 92 días.
+
+```{r}
+filter(AirStationMedias, O3 > 60) %>% count(Nombre)
+```
+
+Por último, vemos que la estación Avenida da Constitución supera los límites de O3 66 días y la Estación de Montevil los supera 110 días.
+
+Ahora se calculan los máximos de los contaminantes.
+
+```{r}
+AirStationsMaximosPM10 <- aggregate(PM10~Fecha + Nombre, AirStations, max, na.rm=TRUE)
+AirStationsMaximosO3 <- aggregate(O3~Fecha + Nombre, AirStations, max, na.rm=TRUE)
+AirStationsMaximosNO2 <- aggregate(NO2~Fecha + Nombre, AirStations, max, na.rm=TRUE)
+AirStationsMaximosSO2 <- aggregate(SO2~Fecha + Nombre, AirStations, max, na.rm=TRUE)
+AirStationMaximos <- merge( x = merge( x = merge(x = AirStationsMaximosPM10, y = AirStationsMaximosO3), y = AirStationsMaximosNO2), y =AirStationsMaximosSO2)
+
+head(AirStationMaximos)
+```
+
+Vamos a realizar la comparativa con los valores máximos diarios.
+
+```{r}
+filter(AirStationMaximos, O3 > 100) %>% count(Nombre)
+```
+
+En este caso las cinco estaciones superan los máximos diarios de O3, se observan arriba el número de días.
+
+```{r}
+filter(AirStationMaximos, NO2 > 120) %>% count(Nombre)
+```
+
+En este caso sólo se superan los máximos diarios en dos estaciones, y sólo un día para cada una.
+
+
+### b) Representación gráfica
+
+```{r}
+ggplot(AirStationsMaximosPM10, aes(x = Fecha, y = PM10, group = Nombre)) +
+  geom_line(aes(color = Nombre))+
+  ggtitle("Máximos PM10 por estación")
+```
+
+```{r}
+ggplot(AirStationsMaximosO3, aes(x = Fecha, y = O3, group = Nombre)) +
+  geom_line(aes(color = Nombre))+
+  ggtitle("Máximos O3 por estación")
+```
+
+```{r}
+ggplot(AirStationsMaximosNO2, aes(x = Fecha, y = NO2, group = Nombre)) +
+  geom_line(aes(color = Nombre))+
+  ggtitle("Máximos NO2 por estación")
+```
+
+
+```{r}
+ggplot(AirStationsMaximosSO2, aes(x = Fecha, y = SO2, group = Nombre)) +
+  geom_line(aes(color = Nombre))+
+  ggtitle("Máximos SO2 por estación")
+```
+
+
+### c) Estudio de correlación lineal
+
+*Para ello se seleccionan las dos estaciones con registros meteorológicos: Estación de Montevil y Estación Avenida Constitución. Para cada una de las estaciones, calcular la matriz de correlación entre los contaminantes citados anteriormente y las variables meteorológicas: Temperatura (TMP), Humedad Relativa (HR), Radiación solar (RS), velocidad del viento (vv), precipitaciones (LL) y Presión barométrica (PRB).Interpretad.*
+
+Para calcular la matriz de correlacion, tenemos que calcular las medias también de las variables meteorológicas, para contar con el mismo número de variables.
+
+
+```{r}
+AirStationsMediasTMP <- aggregate(TMP~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasHR <- aggregate(HR~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasRS <- aggregate(RS~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasvv<- aggregate(vv~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasLL <- aggregate(LL~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationsMediasPRB <- aggregate(PRB~Fecha + Nombre, AirStations, mean, na.rm=TRUE)
+AirStationMedias <- merge( x =merge( x=merge( x=merge( x = merge( x = merge(x = AirStationMedias, y = AirStationsMediasTMP), y = AirStationsMediasHR), y =AirStationsMediasRS), y= AirStationsMediasvv), y=AirStationsMediasLL), y=AirStationsMediasPRB)
+
+head(AirStationMedias)
+```
+
+Ahora ya podemos calcular la matriz de correlacción.
+
+```{r}
+round(cor(AirStationMedias[, !(names(AirStationMedias) %in% c("Fecha", "Nombre"))], use = "complete.obs"), 2)
+```
+
+Se puede observar que la velocidad del viento tiene una correlación directa con el contaminante O3, con un factor de casi la mitad. En cuanto al contaminante PM10 se observa que es inversamente proporcional a la velocidad del viento, la presión barométrica y las precipitcaciones, pero con coeficientes bajos.
+
+Por otra parte, el contaminante NO2 es inversamente proporcional a la temperatura y la velocidad del viento con un coeficiente casi de la mitad, y también a la humedad con coeficiente parecido.
+
+Por último, el contaminante SO2 no tiene valores de correlacion lo suficientemente elevados para tenerlos en cuenta.
+
+## 1.2.- Modelo de regresión lineal
+
+*Como he mencionado arriba, para construir los modelos de regresión, se tomarán los valores de las variables escogidas por hora, tal como aparecen en la base de datos original.*
+
+### a) Crear modelo de regresión lineal
+
+*Se pide crear un modelo de regresión lineal, tomando como variable dependiente (O3) y variable explicativa (NO2). Se evaluará la bondad del ajuste, a partir del coeficiente de determinación. Interpretad.*
+
+```{r}
+regresion <- lm(O3~NO2, data =AirStations)
+summary(regresion)
+```
+
+Los parámetros de la ecuación de la recta de mínimos cuadrados que relaciona la cantidad de O3 en función de la cantidad de NO2 vienen dados por la columna "Estimate" de la tabla "Coefficients" de la salida anterior. Por lo tanto, la ecuación sería:
+
+$$
+
+  y = 72.64 - 1.03x
+
+$$
+
+El coeficiente de determinación (es decir, el coeficiente de correlación al cuadrado) mide la bondad del ajuste de la recta a los datos. Como se ve en la salida anterior, el coeficiente es: 0.4207. Por lo tanto, sólo un 42% de los datos quedan explicados con este modelo de regresión. El ajuste es bajo.
+
+La recta de regresión lineal es la siguiente:
+
+```{r}
+plot(AirStations$O3, AirStations$NO2)
+abline(regresion, col = "red")
+```
+
+
+### b) Se añade al modelo anterior el nombre de las estaciones (Nombre). Interpretad.
+
+Se genera el modelo.
+
+```{r}
+regresion2 <- lm(O3 ~ NO2 + Nombre, data = AirStations)
+summary(regresion2)
+```
+
+En este caso, el coeficiente de determinación es de 0.4266, lo que indica que solo un 42% de los datos se explican con el modelo creado. Por lo el modelo no mejora con respecto al anterior añadiendo la varibale explicativa "nombre".
+
+## 1.3.- Modelo de regresión lineal múltiple
+
+*Se quiere construir un modelo de regresión múltiple con el que podamos predecir la concentración de ozono (O3) en las zonas de Montevil y Avenida de la Constitución.*
+
+### a) 
+
+*Se pide dos modelos (uno para cada estación) tomando como variable dependiente el nivel de ozono (O3) en función de la concentración de dióxido de nitrógeno (NO2) y diferentes variables meteorológicas como vv (velocidad del viento), RS (radiación solar), HR (humedad relativa) y LL (precipitaciones).*
+
+En primer lugar, se separan los datos de las estaciones.
+
+```{r}
+EstacionMontevil <- filter(AirStations, Nombre == "Estacion de Montevil")
+EstacionAvenidaConstitucion <- filter(AirStations, Nombre == "Estacion Avenida Constitucion")
+```
+
+
+Ahora, generamos los modelos para cada estación. Primero procedemos con la estación Montevil.
+
+```{r}
+modelo1 <- lm(O3~NO2 + vv + RS + LL , data = EstacionMontevil)
+summary(modelo1)
+```
+
+Con todas las variables meteorológicas tenemos un modelo con un coeficiente de terminanción del 0.5921, lo que se acerca más a 1.
+
+Vamos a crear ahora el modelo para la estación Avenida Constitución siguiendo los pasos anteriores.
+
+```{r}
+modelo2 <- lm(O3 ~ NO2 + vv + RS + LL, data = EstacionAvenidaConstitucion)
+summary(modelo2)
+```
+
+En este caso el coeficiente de determinación del modelo es de 0.5685, lo que indica que el 56.85% de los datos quedan explicados con el modelo. 
+
+
+### b)
+
+*Se añade a los modelos anteriores la variable Temperatura (TMP). De ser necesario, se pide comprobar la presencia o no de colinealidad entre las variables (vv) y (TMP). Podéis usar la librería (faraway) y estudiar el FIV (factor de inflación de la varianza). Discutid si sería indicado o no añadir la variable (TMP) a cada uno de los modelos.*
+
+
+En primer lugar, vamor a observar la correlación de las variables.
+
+```{r}
+round(cor(EstacionMontevil[, c("vv", "TMP")],use = "complete.obs"), 2)
+```
+```{r}
+round(cor(EstacionAvenidaConstitucion[, c("vv", "TMP")],use = "complete.obs"), 2)
+```
+
+Se observa en las matrices de correlaciones que las variables vv y TMP no son linealmente dependientes, por lo que no tenemos que preocuparnos de la colinealidad entre estos predictores. Vamos a añadir la temperatura a los modelos, primero al de la estación Montevil.
+
+```{r}
+modelo3 <- lm(O3~NO2 + vv + RS + LL + TMP , data = EstacionMontevil)
+summary(modelo3)
+```
+
+En este caso el coeficiente de detminación es de 0.5961, lo que indica que el 59.61% de los datos son explicados con este modelo. Esto es un 0.40% más que con el modelo sin la variable explicativa temperatura. Como mejora el modelo, sería indicado añadir la variable.
+
+Vamos ahora a añadir la temperatura al modelo de la estación Avenida Constitución.
+
+```{r}
+modelo4 <- lm(O3~NO2 + vv + RS + LL + TMP , data = EstacionAvenidaConstitucion)
+summary(modelo4)
+```
+
+En este caso el coeficiente de determinación es de 0.5686, lo que indica que el 56.86% de los datos quedan explicados con el modelo. Si lo comparamos con el anterior, el porcentaje de mejora es de un 0.01%, lo cual es mínimo. Además, se observa en el resultado del modelo que la variable temperatura no es significativa. Por lo tanto, no la añadiría al modelo.
+
+## 1.4. Diagnosis del modelo
+
+*Para la diagnosis se escoge el último modelo construído para la estación de Montevil y se piden dos gráficos: uno con los valores ajustados frente a los residuos (que nos permitirá ver si la varianza es constante) y el gráfico cuantil-cuantil que compara los residuos del modelo con los valores de una variable que se distribuye normalmente(QQ plot). Interpretad los resultados.*
+
+El último modelo construido para la estación de Montevil es el siguiente:
+
+```{r}
+modelo3 <- lm(O3~NO2 + vv + RS + LL + TMP , data = EstacionMontevil)
+summary(modelo3)
+```
+
+Vamos a realizar las gráficas solicitadas.
+
+```{r}
+par(mfrow = c(2,2))
+plot(modelo3)
+```
+
+En la gráfica de residuos se puede ver que los puntos se distribuyen aleatoriamente a ambos lados del cero y que no se detectan patrones. 
+
+La gráfica de Q-Q es una gráfica de probabilidad normal. Dará una línea recta si los errores se distribuyen normalmente. En este caso se observa la línea recta, pero se desvía en los extremos. 
+
+
+## 1.5.- Predicción del modelo
+
+*Según el modelo del apartado anterior, calculad la concentración de O3, si se tienen valores de NO2 de 40, vv de 2, RS de 100, HR de 80, LL de 0.10 y TMP de 25.*
+
+```{r}
+datos <- data.frame(NO2 = 40, vv = 2, RS = 100, HR = 80, LL = 0.10, TMP = 25)
+p <- predict(modelo3, datos)
+p
+```
+
+Según el modelo, el valor de O3 sería 38.23.
+
+# 2.- Regresión logística
+
+*Para construir las nuevas variables y los modelos de regresión logística, se tomarán los valores de las variables escogidas por hora, tal como aparecen en la base de datos original.
+En este apartado se tomarán como contaminantes la concentración de PM10 y de O3. Se procederá a calcular los índices de calidad (icPM10 e icO3) de la forma siguiente:*
+
+* PM10 recodificada: (icPM10)
+  + **aceptable**: valores de (0 a 45],
+  + **mejorable**: valores de (45 a 180]
+* O3 recodificada: (ic03)
+  + **aceptable**: valores de (0 a 60],
+  + **mejorable**: valores de (60 a 170]
+
+La variable RS también será recodificada:
+
+* RS recodificada (RS_re):
+  + **normal_baja**:(0 a 100],
+  + **normal_alta**: valores de (100 a 700]
+Nota: Dicho índice de calidad se ha recodificado conforme a nuestros datos.
+
+
+En primer lugar vamos a crear las variables anteriores.
+
+```{r}
+AirStations$icPM10 <- as.factor(ifelse(AirStations$PM10 > 0 & AirStations$PM10 <= 45.0,"aceptable", ifelse(AirStations$PM10 > 45.0 & AirStations$PM10 <= 180.0, "mejorable", NA)))
+AirStations$icO3 <- as.factor(ifelse(AirStations$O3>0 & AirStations$O3 <=60, "aceptable", ifelse(AirStations$O3 > 60 & AirStations$O3 <= 170, "mejorable", NA)))
+AirStations$RS_re <- as.factor(ifelse(AirStations$RS > 0 & AirStations$RS <= 100, "normal_baja", ifelse(AirStations$RS > 100 & AirStations$RS <=700, "normal_alta", NA)))
+```
+
+
+## 2.1.- Análisis crudo. Cálculo de OR
+
+Se creará una nueva variable con los meses del año a partir de la variable Fecha, llamada month.
+
+```{r}
+AirStations$month <- as.numeric(format(AirStations$Fecha,'%m'))
+```
+
+### a) Cálculo OR
+
+*Se calculará las OR (Odds-Ratio) entre cada una de las variables dependientes icPM10 y icO3 y
+las variables explicativas radiación solar recodificada (RS_re) y (month) en la estación de Montevil. Importante: Para el cálculo de las OR, se partirá de la tabla de contingencia y se calculará a partir de su fórmula. Debéis implementar dicha fórmula en R. ¿Se puede considerar que la radiación solar y el mes del año son factores de riesgo? Justifica tu respuesta e interpreta las OR.*
+ 
+Para calcular el Oddstio (OR), que puede ser definido como una medida de asociación entre variables binarias se deben seguir los pados siguientes:
+
+* En primer lugar, se realizará el estudio con varias funciones de las que extraeremos el computo final.
+* Una OR = 1 quiere decir que no hay asociación entre las variables. 
+* Una OR < 1 quiere decir que el valor con el que se está comparando no es factor de riesgo.
+* Una OR > 1 quiere decir que el valor con el que se está comparando es factor de riesgo.
+
+Se implementan las funciones.
+
+```{r}
+
+oddsratioWald.proc <- function(n00, n01, n10, n11, alpha = 0.05){
+  #
+  #  Compute the odds ratio between two binary variables, x and y,
+  #  as defined by the four numbers nij:
+  #
+  #    n00 = number of cases where x = 0 and y = 0
+  #    n01 = number of cases where x = 0 and y = 1
+  #    n10 = number of cases where x = 1 and y = 0
+  #    n11 = number of cases where x = 1 and y = 1
+  #
+  OR <- (n00 * n11)/(n01 * n10)
+  #
+  #  Compute the Wald confidence intervals:
+  #
+  siglog <- sqrt((1/n00) + (1/n01) + (1/n10) + (1/n11))
+  zalph <- qnorm(1 - alpha/2)
+  logOR <- log(OR)
+  loglo <- logOR - zalph * siglog
+  loghi <- logOR + zalph * siglog
+  #
+  ORlo <- exp(loglo)
+  ORhi <- exp(loghi)
+  #
+  oframe <- data.frame(LowerCI = ORlo, OR = OR, UpperCI = ORhi, alpha = alpha)
+  oframe
+}
+AutomaticOR.proc <- function(x,y,alpha=0.05){
+  #
+  xtab <- table(x,y)
+  n00 <- xtab[1,1]
+  n01 <- xtab[1,2]
+  n10 <- xtab[2,1]
+  n11 <- xtab[2,2]
+  #
+  rawOR <- (n00*n11)/(n01*n10)
+  if (rawOR < 1){
+    n01 <- xtab[1,1]
+    n00 <- xtab[1,2]
+    n11 <- xtab[2,1]
+    n10 <- xtab[2,2]
+    iLevel <- 2
+  }
+  else{
+    iLevel <- 1
+  }
+  outList <- vector("list",2)
+  output <- oddsratioWald.proc(n00,n01,n10,n11,alpha)
+  output
+}
+```
+
+Separamos los datos de la estación de Montevil.
+
+```{r}
+EstacionMontevilLog <- filter(AirStations, Nombre == "Estacion de Montevil")
+```
+
+Ahora podemos llamar a la función y obtener el valor Odds para el primer estudio, la relación entre icPM10 y la variable explicativa RS_re.
+
+Primero miramos la matriz de contingencia para la variable dependiente icPM10 y la variable explicativa RS_re.
+
+```{r}
+table(EstacionMontevilLog$icPM10, EstacionMontevilLog$RS_re)
+```
+
+Calculamos el Odds.
+
+```{r}
+AutomaticOR.proc(EstacionMontevilLog$icPM10, EstacionMontevilLog$RS_re)
+```
+
+Obtenemos que e Odds ratio es 1.18. Así, podemos concluír que la radiación solar es un factor de riesgo con respecto al PM10.
+
+En el caso del mes, no se trata de una variable binaria, por lo que no podemos realizar el cálculo de OR. El cálculo del OR únicamente es válido para tablas de contingencia 2x2, varibales binarias. En este caso si podría estudiarse la relación entre el PM10 y dos meses en concreto o una categorización binaria de los meses ( por ejemplo, semestres).
+
+Pasamos a mirar la matriz de contingencia para la variable dependiente icO3 y la variable explicativa RS_Re.
+
+```{r}
+table(EstacionMontevilLog$icO3, EstacionMontevilLog$RS_re)
+```
+
+Procedemos con el cálculo del Odds.
+
+```{r}
+AutomaticOR.proc(EstacionMontevilLog$icO3, EstacionMontevilLog$RS_re)
+```
+
+En este caso se obtiene un Odds ratio de 5.21, lo que nos indica que la radiación solar es un factor de riesgo con respecto al O3.
+
+Con el mes nos encontramos en el mismo caso anterior. Podemos hacer un ejemplo codificando el mes en una variable binaria: semestre 1 y semestre 2.
+
+```{r}
+EstacionMontevilLog$icMonth <- ifelse(EstacionMontevilLog$month <= 6, "semestre1", "semestre2")
+```
+
+Podemos calcular ahora el Odds ratio con esta nueva variable.
+
+```{r}
+AutomaticOR.proc(EstacionMontevilLog$icO3, EstacionMontevilLog$icMonth)
+```
+
+El Odds ratio es 2.70 y como es superior a 1 podemos concluír que es factor de riesgo.
+
+### b) Calculos OR para estación Avenida Constitución
+
+Separamos los datos de la estación.
+
+```{r}
+EstacionAvenidaConstitucionLog <- filter(AirStations, Nombre == "Estacion Avenida Constitucion")
+```
+
+
+Pasamos a realizar los cálculos de los Odds ratio.
+
+```{r}
+AutomaticOR.proc(EstacionAvenidaConstitucionLog$icPM10, EstacionAvenidaConstitucionLog$RS_re)
+```
+
+En este caso el Odss ratio es mayor que 1, por lo que se trata de un factor de riesgo.
+
+```{r}
+AutomaticOR.proc(EstacionAvenidaConstitucionLog$icO3, EstacionAvenidaConstitucionLog$RS_re)
+```
+
+Al igual que en los casos anteriores, el Odss ratio es mayor que 1, por lo que se trata de un factor de riesgo. Probemos a realizar la misma prueba con los meses que en el apartado anterior.
+
+```{r}
+EstacionAvenidaConstitucionLog$icMonth <- ifelse(EstacionAvenidaConstitucionLog$month <= 6, "semestre1", "semestre2")
+AutomaticOR.proc(EstacionAvenidaConstitucionLog$icPM10, EstacionAvenidaConstitucionLog$icMonth)
+```
+
+```{r}
+AutomaticOR.proc(EstacionAvenidaConstitucionLog$icO3, EstacionAvenidaConstitucionLog$icMonth)
+```
+
+Estos dos casos nos proporcionan los mismos resultados, que no se tratan de variables de riesgo.
+
+## 2.2.- Modelo de regresión logística
+
+*Para la estación de Montevil del apartado anterior:*
+
+### a) Modelo de regresión logística
+
+*Se pide construir un modelo de regresión logística tomando como variable dependiente icPM10 y variables explicativas (RS_re), (vv) y (PRB). Interpretad y calculad las OR.*
+
+Creamos el modelo de regresión logística.
+
+```{r}
+modelo5 <- glm(icPM10 ~ RS_re + vv + PRB, data = EstacionMontevilLog, family = "binomial" )
+summary(modelo5)
+```
+
+Se observa que las variables explicativas tienen un p-value menor a 0.05, por lo que concluimos que influyen en el valor que toma la variable icPM10. Obtenemos ahora el valor del Odds ratio.
+
+```{r}
+exp(coef(modelo5))
+```
+
+Esto nos indica, como son inferiores a 1 por lo que las variables del modelo no son factores de riesgo.
+
+### b) Añadir variable al modelo
+
+*Se añade al modelo del apartado anterior la variable (month). ¿Existe una mejora del modelo? Justificad e interpretad.*
+
+```{r}
+modelo6 <- glm(icPM10 ~ RS_re + vv + PRB + month, data = EstacionMontevilLog, family = "binomial" )
+summary(modelo6)
+```
+
+En este caso también los p-value de las variables son inferiores a 0.05, por lo que son significativas para el modelo. En este caso la variable RS_re pasa a influir más en el modelo.
+
+Si tenemos en cuenta la medida AIC que nos indica la calidad del modelo, este segundo modelo es mejor que el primero.
+
+### c) Añadir variable TMP.
+
+*Se añadirá al modelo anterior como variable explicativa la variable (TMP). Justificad la presencia o no de una posible interacción con (RS_re). ¿Se podría estar ante una variable de confusión?. Razona tu respuesta.*
+
+```{r}
+modelo7 <- glm(icPM10 ~ RS_re + vv + PRB + month +TMP, data = EstacionMontevilLog, family = "binomial" )
+summary(modelo7)
+```
+
+En este caso podemos observar que la variable introducida no es significativa para el modelo.
+
+Vamos a calcular los Odds ratio.
+
+```{r}
+exp(coef(modelo7))
+```
+
+Se observa que la variable TMP no es una variable de riesgo.
+
+## 2.3.- Predicción
+
+*Según el modelo del apartado b), calculad la probabilidad de que la concentración de PM10 sea o no superior a 45, con unos valores de vv= 0.6, RS_re=“Normal_alta”,PRB= 1013, en el mes de Agosto.*
+
+```{r}
+datos <- data.frame(vv = 0.6, RS_re = "normal_alta", PRB = 1013, month = 8)
+p <- predict(modelo6, datos, type = "response")
+p
+```
+La probabilidad de que la concentración de PM10 sea superior a 45 es de 0.14.
+
+
+## 2.4.- Bondad del ajuste
+
+*Usa el test de Hosman-Lemeshow para ver la bondad de ajuste, tomando el modelo del apartado b). En la librería ResourceSelection hay una función que ajusta el test de Hosmer- Lemeshow.*
+
+
+```{r}
+hoslem.test(modelo6$y, fitted(modelo6))
+```
+El p-value es inferior a 0.05, por lo que se rechaza la hipótesis nula de que las proporciones observadas y esperadas son las mismas en todas las observaciones.
+
+
+
+
